@@ -1,0 +1,22 @@
+{
+  "name": "export-weidian-orders",
+  "version": "1.0.0",
+  "description": "Export Weidian Orders Using Node.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^0.22.0",
+    "eslint": "^3.19.0",
+    "eslint-plugin-import": "^2.2.0",
+    "eslint-plugin-node": "^4.2.2",
+    "node-excel-export": "^1.4.1",
+    "node-xlsx": "^0.7.4",
+    "request": "^2.81.0",
+    "request-promise-native": "^1.0.3",
+    "xlsx": "^0.9.13"
+  }
+}
