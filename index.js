@@ -1,7 +1,44 @@
 const rp = require('request-promise-native');
+const superagent = require('superagent');
 const cheerio = require('cheerio');
 const xlsx = require('xlsx');
 
+const url = {
+  'login': 'https://sso.weidian.com/user/login',
+  'orders': 'https://gwh5.api.weidian.com/wd/order/buyer/getOrderListExt',
+  'item': 'https://weidian.com/item.html'
+};
+
+// 1. login
+async function login () {
+  const browserMsg = {
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1',
+    'Content-Type':'application/x-www-form-urlencoded'
+  };
+
+  const loginMsg = {
+    'countryCode': 86,
+    'phone': '',
+    'password': '',
+    'version': 1
+  };
+
+  const response = await superagent.post(url.login).set(browserMsg).send(loginMsg).redirects(0);
+  const cookie = response.headers['set-cookie'];
+  const res = {};
+
+  cookie.forEach(c => {
+    const id =  c.match(/WD_client_userid_raw=(\d+)/);
+    if (id) res.id = id[1];
+
+    const wduss =  c.match(/WD_b_wduss=([\d\w]+);/);
+    if (wduss) res.wduss = wduss[1];
+  });
+  
+  return res;
+}
+
+// 2. fetchData
 function parseBody(body) {
   return !body ? {} : JSON.parse(body.replace('jsonp2(', '').replace(/\);?\s*$/g, ''));
 }
@@ -30,26 +67,17 @@ function writeXlsx(_data) {
     }
   };
   xlsx.writeFile(wb, 'output.xlsx');
+
+  console.info('===== 写入 xlsx 文件成功 =====');
 }
 
-const api = 'https://gwh5.api.weidian.com/wd/order/buyer/getOrderListExt';
-
-const param = {
-  'pageNum': 0,
-  'pageSize': 50,
-  'ordertype': 'pend',
-  'type': 2,
-  'userID': '',
-  'wduss': ''
-};
-
-const url = `${api}?noticeIsBuyer=1&param=${JSON.stringify(param)}&_=${+new Date()}&callback=jsonp2`;
-
-(async () => {
+async function fetchData(param) {
   const res = [];
-  const repos = await rp(url);
+  const api = `${url.orders}?noticeIsBuyer=1&param=${JSON.stringify(param)}&_=${+new Date()}&callback=jsonp2`;  
+  const repos = await rp(api);
   const result = parseBody(repos).result;
   if (result.length) {
+    console.info('===== 获取订单信息成功 =====');
     result.forEach(order => {
       order && order.items.forEach(item => {
         res.push({
@@ -65,13 +93,33 @@ const url = `${api}?noticeIsBuyer=1&param=${JSON.stringify(param)}&_=${+new Date
   }
 
   if (res.length) {
+    // 需要获取完整的商品名字
     for(let i = 0, l = res.length; i < l; i++){
-      const body = await rp(`https://weidian.com/item.html?itemID=${res[i].id}`);
+      const body = await rp(`${url.item}?itemID=${res[i].id}`);
       const $ = cheerio.load(body);
       res[i]['商品名'] = $('head title').text();
     }
-    // console.log(res.reverse());
-
     writeXlsx(res.reverse());
   }
+}
+
+// run
+(async () => {
+  const info = await login();
+  if (info) {
+    console.info('===== 登陆成功 =====');
+  } else {
+    console.error('===== 登陆失败 =====');
+    return;
+  }
+
+  const param = {
+    'pageNum': 0,
+    'pageSize': 50,
+    'ordertype': 'pend',
+    'type': 2,
+    'userID': info.id,
+    'wduss': info.wduss
+  };
+  fetchData(param);
 })();

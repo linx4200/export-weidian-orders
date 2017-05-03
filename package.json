@@ -1,15 +1,15 @@
 {
   "name": "export-weidian-orders",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Export Weidian Orders Using Node.js",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "liuxinran",
-  "repository" :{
-    "type" : "git",
-    "url" : "https://github.com/linx4200/export-weidian-orders"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/linx4200/export-weidian-orders"
   },
   "license": "MIT",
   "dependencies": {
@@ -19,6 +19,7 @@
     "eslint-plugin-node": "^4.2.2",
     "request": "^2.81.0",
     "request-promise-native": "^1.0.3",
+    "superagent": "^3.5.2",
     "xlsx": "^0.9.13"
   }
 }
