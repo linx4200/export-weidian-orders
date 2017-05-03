@@ -17,6 +17,7 @@
     "eslint": "^3.19.0",
     "eslint-plugin-import": "^2.2.0",
     "eslint-plugin-node": "^4.2.2",
+    "minimist": "^1.2.0",
     "request": "^2.81.0",
     "request-promise-native": "^1.0.3",
     "superagent": "^3.5.2",

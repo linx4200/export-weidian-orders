@@ -9,8 +9,13 @@ const url = {
   'item': 'https://weidian.com/item.html'
 };
 
+const argv = require('minimist')(process.argv.slice(2));
+const password = argv.p;
+const phone = argv.u;
+const outputFile = argv.o || 'output';
+
 // 1. login
-async function login () {
+async function login (phone, password) {
   const browserMsg = {
     'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1',
     'Content-Type':'application/x-www-form-urlencoded'
@@ -18,15 +23,20 @@ async function login () {
 
   const loginMsg = {
     'countryCode': 86,
-    'phone': '',
-    'password': '',
+    phone,
+    password,
     'version': 1
   };
 
   const response = await superagent.post(url.login).set(browserMsg).send(loginMsg).redirects(0);
   const cookie = response.headers['set-cookie'];
-  const res = {};
 
+  if (!cookie) {
+    console.error('===== 登陆失败 =====');
+    return null;
+  }
+
+  const res = {};
   cookie.forEach(c => {
     const id =  c.match(/WD_client_userid_raw=(\d+)/);
     if (id) res.id = id[1];
@@ -66,9 +76,9 @@ function writeXlsx(_data) {
       'mySheet': Object.assign({}, output, { '!ref': ref })
     }
   };
-  xlsx.writeFile(wb, 'output.xlsx');
+  xlsx.writeFile(wb, `${outputFile}.xlsx`);
 
-  console.info('===== 写入 xlsx 文件成功 =====');
+  console.info(`===== 写入 ${outputFile}.xlsx 成功 =====`);
 }
 
 async function fetchData(param) {
@@ -105,11 +115,15 @@ async function fetchData(param) {
 
 // run
 (async () => {
-  const info = await login();
+  if (!password || !phone) {
+    console.error('请输入用户名和密码');
+    return;
+  }
+
+  const info = await login(phone, password);
   if (info) {
     console.info('===== 登陆成功 =====');
   } else {
-    console.error('===== 登陆失败 =====');
     return;
   }
 
