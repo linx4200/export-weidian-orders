@@ -131,7 +131,7 @@ async function fetchData(param) {
     'pageNum': 0,
     'pageSize': 50,
     'ordertype': 'pend',
-    'type': 2,
+    'type': 0,
     'userID': info.id,
     'wduss': info.wduss
   };
