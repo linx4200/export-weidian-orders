@@ -1,11 +1,12 @@
-const rp = require('request-promise-native');
-const superagent = require('superagent');
-const cheerio = require('cheerio');
+const rp = require('request-promise');
+// const cheerio = require('cheerio');
+const tough = require('tough-cookie');
+const Cookie = tough.Cookie;
 const xlsx = require('xlsx');
 
 const url = {
   'login': 'https://sso.weidian.com/user/login',
-  'orders': 'https://gwh5.api.weidian.com/wd/order/buyer/getOrderListExt',
+  'orders': 'https://gwh5.api.weidian.com/wd/buyer/buyer_query_order_list',
   'item': 'https://weidian.com/item.html'
 };
 
@@ -14,44 +15,54 @@ const password = argv.p;
 const phone = argv.u;
 const outputFile = argv.o || 'output';
 
+function request(options) {
+  return new Promise((resolve, reject) => {
+    function autoParse(body, response, resolveWithFullResponse) {
+      return [body, response, resolveWithFullResponse];
+    }
+    options.transform = autoParse;
+    rp(options).then(body => resolve(body)).catch(err => reject(err));
+  });
+}
+
 // 1. login
 async function login (phone, password) {
-  const browserMsg = {
-    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1',
-    'Content-Type':'application/x-www-form-urlencoded'
-  };
 
-  const loginMsg = {
+  const form = {
     'countryCode': 86,
     phone,
     password,
     'version': 1
   };
 
-  const response = await superagent.post(url.login).set(browserMsg).send(loginMsg).redirects(0);
-  const cookie = response.headers['set-cookie'];
+  const options = {
+    method: 'POST',
+    uri: url.login,
+    form,
+    json: true // Automatically stringifies the body to JSON
+  };
 
-  if (!cookie) {
-    console.error('===== 登陆失败 =====');
-    return null;
+  const [body, response] =  await request(options);
+  
+  if (body.status && body.status.status_code !== 0) {
+    return new Error('===== 登陆失败 =====');
+  }
+  let cookies;
+  if (response.headers['set-cookie'] instanceof Array) {
+    cookies = response.headers['set-cookie'].map(Cookie.parse);
+  } else {
+    cookies = [Cookie.parse(response.headers['set-cookie'])];
   }
 
   const res = {};
-  cookie.forEach(c => {
-    const id =  c.match(/WD_client_userid_raw=(\d+)/);
-    if (id) res.id = id[1];
-
-    const wduss =  c.match(/WD_b_wduss=([\d\w]+);/);
-    if (wduss) res.wduss = wduss[1];
+  res.cookies = cookies;
+  cookies.forEach(c => {
+    if (c.key === 'uid') res.id = c.value;
+    if (c.key === 'WD_b_wduss') res.wduss = c.value;
   });
-  
   return res;
 }
 
-// 2. fetchData
-function parseBody(body) {
-  return !body ? {} : JSON.parse(body.replace('jsonp2(', '').replace(/\);?\s*$/g, ''));
-}
 
 function writeXlsx(_data) {
   // https://aotu.io/notes/2016/04/07/node-excel/
@@ -81,19 +92,45 @@ function writeXlsx(_data) {
   console.info(`===== 写入 ${outputFile}.xlsx 成功 =====`);
 }
 
+// 2. fetchData
 async function fetchData(param) {
   const res = [];
-  const api = `${url.orders}?noticeIsBuyer=1&param=${JSON.stringify(param)}&_=${+new Date()}&callback=jsonp2`;  
-  const repos = await rp(api);
-  const result = parseBody(repos).result;
-  if (result.length) {
+
+  const cookies = param.cookies;
+  const cookiejar = rp.jar();
+  const domain = 'https://gwh5.api.weidian.com';
+  cookies.forEach(cookie => cookiejar.setCookie(cookie, domain));
+  delete param.cookies;
+
+  const options = {
+    uri: url.orders,
+    qs: {
+      noticeIsBuyer: '1',
+      param: JSON.stringify(param),
+      _: +new Date()
+    },
+    headers: {
+      referer: 'https://i.weidian.com/order/list.php?type=0'
+    },
+    jar: cookiejar,
+    json: true // Automatically parses the JSON string in the response
+  };
+
+  let body;
+  try {
+    [body] = await request(options);
+  } catch (e) {
+    new Error(`===== 获取数据失败 ===== ${e.message}`);
+  }
+
+  if (body.result && body.result.length) {
     console.info('===== 获取订单信息成功 =====');
-    result.forEach(order => {
+    body.result.forEach(order => {
       order && order.items.forEach(item => {
         res.push({
           'id': item.item_id,
-          '订单号': item.order_id,
-          // '商品名': title,
+          '订单号': order.order_id,
+          '商品名': item.item_title,
           '颜色分类': item.item_sku_title,
           '数量': item.quantity,
           '价格': item.price
@@ -104,11 +141,11 @@ async function fetchData(param) {
 
   if (res.length) {
     // 需要获取完整的商品名字
-    for(let i = 0, l = res.length; i < l; i++){
-      const body = await rp(`${url.item}?itemID=${res[i].id}`);
-      const $ = cheerio.load(body);
-      res[i]['商品名'] = $('head title').text();
-    }
+    // for(let i = 0, l = res.length; i < l; i++){
+    //   const body = await rp(`${url.item}?itemID=${res[i].id}`);
+    //   const $ = cheerio.load(body);
+    //   res[i]['商品名'] = $('head title').text();
+    // }
     writeXlsx(res.reverse());
   }
 }
@@ -119,21 +156,28 @@ async function fetchData(param) {
     console.error('请输入用户名和密码');
     return;
   }
-
-  const info = await login(phone, password);
-  if (info) {
-    console.info('===== 登陆成功 =====');
-  } else {
+  let info;
+  try {
+    info = await login(phone, password);
+  } catch (e) {
+    console.error(`==== 登陆失败 ==== ${e.message}`);
     return;
   }
 
+  console.info('===== 登陆成功 =====');
+
   const param = {
-    'pageNum': 0,
-    'pageSize': 50,
-    'ordertype': 'pend',
-    'type': 0,
-    'userID': info.id,
-    'wduss': info.wduss
+    page: 0,
+    page_size: 100,
+    type: 0,
+    buyer_id: info.id,
+    wduss: info.wduss,
+    cookies: info.cookies
   };
-  fetchData(param);
+  try {
+    fetchData(param);
+  } catch (e) {
+    console.error(e);
+    return;
+  }
 })();

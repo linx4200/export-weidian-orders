@@ -18,8 +18,8 @@
     "eslint-plugin-node": "^4.2.2",
     "minimist": "^1.2.0",
     "request": "^2.81.0",
-    "request-promise-native": "^1.0.3",
-    "superagent": "^3.5.2",
+    "request-promise": "^4.2.2",
+    "tough-cookie": "^2.3.3",
     "xlsx": "^0.9.13"
   }
 }
