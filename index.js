@@ -37,6 +37,9 @@ async function login (phone, password) {
 
   const options = {
     method: 'POST',
+    headers: {
+      referer: 'https://sso.weidian.com/login/index.php'
+    },
     uri: url.login,
     form,
     json: true // Automatically stringifies the body to JSON
